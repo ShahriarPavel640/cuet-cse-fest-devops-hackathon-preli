@@ -1,23 +1,30 @@
+# Stage 1: Dependency Cacher
+FROM node:20-alpine AS deps
+WORKDIR /usr/src/app
+COPY package*.json ./
+# We use 'npm ci' if lockfile exists, otherwise 'npm install'
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
+
+# Stage 2: Production Runner
 FROM node:20-alpine
+# Install Tini
+RUN apk add --no-cache tini
 
 WORKDIR /usr/src/app
 
-COPY package.json ./
+# Copy node_modules from Stage 1
+COPY --from=deps /usr/src/app/node_modules ./node_modules
+# Copy source code
+COPY . .
 
-# Install only production dependencies
-RUN npm install --omit=dev
-
-COPY src ./src
+# Security: Non-root user
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN chown -R appuser:appgroup /usr/src/app
+USER appuser
 
 EXPOSE 5921
 
-# Create a non-root user and group
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+ENTRYPOINT ["/sbin/tini", "--"]
 
-# Change ownership of the app directory
-RUN chown -R appuser:appgroup /usr/src/app
-
-# Switch to the non-root user
-USER appuser
-
+# Fail-safe command: uses whatever is in your package.json
 CMD ["npm", "start"]
