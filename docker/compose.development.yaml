@@ -1,6 +1,56 @@
-# services:
-  # backend:
+services:
+  gateway:
+    build:
+      context: ../gateway
+      dockerfile: Dockerfile.dev
+    ports:
+      # Fix: Map host 5921 to container 8080 (since your Gateway logs said it runs on 8080)
+      - "${GATEWAY_PORT}:8080"
+    environment:
+      - PORT=8080
+      # Points to 'backend' service on port 3847
+      - BACKEND_URL=http://backend:${BACKEND_PORT}
+      - NODE_ENV=development
+    volumes:
+      - ../gateway/src:/usr/src/app/src
+    depends_on:
+      - backend
+    networks:
+      - app-network
 
-  # gateway:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.dev
+    environment:
+      # CRITICAL FIX: Variable name must match envConfig.ts
+      - BACKEND_PORT=${BACKEND_PORT}
+      - MONGO_URI=${MONGO_URI}
+      # CRITICAL FIX: Added because envConfig.ts uses 'dbName'
+      - MONGO_DATABASE=${MONGO_DATABASE}
+      - NODE_ENV=development
+    volumes:
+      - ../backend/src:/usr/src/app/src
+    depends_on:
+      - mongo
+    networks:
+      - app-network
 
-  # mongo:
+  mongo:
+    image: mongo:latest
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE}
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mongo-data:
+    driver: local
